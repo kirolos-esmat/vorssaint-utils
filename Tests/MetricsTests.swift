@@ -4719,8 +4719,10 @@ struct MetricsTests {
                "menu bar peripheral battery is opt-in")
         expect(registeredDefaults[DefaultsKey.menuBarFanSpeed] as? Bool == false,
                "menu bar fan speed is opt-in")
+        expect(registeredDefaults[DefaultsKey.menuBarConnectedDevices] as? Bool == false,
+               "menu bar connected devices is opt-in")
         expect(registeredDefaults[DefaultsKey.menuBarMetricOrder] as? String
-               == "cpu,cpuTemperature,gpu,gpuTemperature,memory,battery,batteryTime,batteryTemperature,peripheralBattery,network,diskUsage,diskActivity,power,fanSpeed",
+               == "cpu,cpuTemperature,gpu,gpuTemperature,memory,battery,batteryTime,batteryTemperature,peripheralBattery,network,diskUsage,diskActivity,connectedDevices,power,fanSpeed",
                "menu bar metric order keeps temperature sensors next to their components and disk near live I/O")
         expect(registeredDefaults[DefaultsKey.menuBarCombineTemperatures] as? Bool == true,
                "menu bar combines usage and temperature by default")
@@ -6106,11 +6108,11 @@ struct MetricsTests {
         expect(Defaults.sanitizedMenuBarMemoryStyle("bad") == "percent", "invalid memory style falls back to percent")
         expect(Defaults.sanitizedMenuBarMetricOrder("cpu,gpu,memory,network,battery,power")
                == ["cpu", "gpu", "memory", "network", "battery", "power",
-                   "cpuTemperature", "gpuTemperature", "batteryTime", "batteryTemperature", "peripheralBattery", "diskUsage", "diskActivity", "fanSpeed"],
+                   "cpuTemperature", "gpuTemperature", "batteryTime", "batteryTemperature", "peripheralBattery", "diskUsage", "diskActivity", "connectedDevices", "fanSpeed"],
                "menu bar metric order appends temperature sensors without rewriting existing saved order")
         expect(Defaults.sanitizedMenuBarMetricOrder("temperature,cpu,cpu,bad")
                == ["cpuTemperature", "gpuTemperature", "batteryTemperature",
-                   "cpu", "gpu", "memory", "battery", "batteryTime", "peripheralBattery", "network", "diskUsage", "diskActivity", "power", "fanSpeed"],
+                   "cpu", "gpu", "memory", "battery", "batteryTime", "peripheralBattery", "network", "diskUsage", "diskActivity", "connectedDevices", "power", "fanSpeed"],
                "menu bar metric order migrates the old generic temperature value")
         expect(Defaults.sanitizedBundleIdentifierList([" com.example.One ", "", "com.example.One", "com.example.Two"])
                == ["com.example.One", "com.example.Two"],
@@ -15333,10 +15335,17 @@ struct MetricsTests {
                "monitor wakes every tick in the foreground")
         expect(MonitorSamplingPolicy.wakeTicks(for: [], intervalSeconds: 2, foreground: false) == 1,
                "monitor wake cadence defaults to every tick with no needs")
+        expect(MonitorSamplingPolicy.sampleStride(for: .connectedDevices, intervalSeconds: 2, foreground: false) == 5,
+               "connected devices sampling is throttled in background")
+        expect(MonitorSamplingPolicy.sampleStride(for: .connectedDevices, intervalSeconds: 2, foreground: true) == 1,
+               "connected devices sampling runs at 2s cadence in foreground")
+        expect(MonitorSamplingPolicy.wakeTicks(for: [.connectedDevices], intervalSeconds: 2, foreground: false) == 5,
+               "monitor with only connected devices wakes at 10s cadence")
+
         // Exactness invariant: the cadence always divides every needed stride,
         // so grid-aligned ticks keep hitting each stride exactly on schedule.
         let wakeKinds: [MonitorSamplingKind] = [.disk, .power, .gpuUsage, .temperature,
-                                                .fanSpeed, .peripheralBattery]
+                                                .fanSpeed, .peripheralBattery, .connectedDevices]
         let cadence = MonitorSamplingPolicy.wakeTicks(for: wakeKinds, intervalSeconds: 2, foreground: false)
         expect(wakeKinds.allSatisfy {
             MonitorSamplingPolicy.sampleStride(for: $0, intervalSeconds: 2, foreground: false) % cadence == 0
@@ -15347,6 +15356,102 @@ struct MetricsTests {
                "monitor tick off the wake grid realigns to the next slot")
         expect(MonitorSamplingPolicy.alignedTick(9, wakeTicks: 1) == 9,
                "monitor tick needs no alignment at every-tick cadence")
+
+        // MARK: Connected USB Devices
+
+        let validUSBProps: [String: Any] = [
+            "USB Product Name": "SanDisk Extreme",
+            "USB Vendor Name": "SanDisk",
+            "idVendor": 0x0781,
+            "idProduct": 0x5583,
+            "locationID": 0x01100000,
+        ]
+        let parsedUSB = USBDeviceSampler.parseDevice(properties: validUSBProps)
+        expect(parsedUSB != nil, "valid external USB device is parsed")
+        expect(parsedUSB?.name == "SanDisk Extreme", "USB device name is extracted")
+        expect(parsedUSB?.vendorName == "SanDisk", "USB vendor name is extracted")
+        expect(parsedUSB?.vendorId == 0x0781, "USB vendor ID is extracted")
+        expect(parsedUSB?.productId == 0x5583, "USB product ID is extracted")
+        expect(parsedUSB?.locationId == 0x01100000, "USB location ID is extracted")
+        expect(parsedUSB?.id == "\(0x0781)-\(0x5583)-loc\(0x01100000)", "USB device ID is compound")
+
+        let fallbackProps: [String: Any] = [
+            "Product Name": "Keychron K2",
+            "Vendor Name": "Keychron",
+            "idVendor": 0x05ac,
+            "idProduct": 0x024f,
+            "locationID": 0x01200000,
+        ]
+        let parsedFallback = USBDeviceSampler.parseDevice(properties: fallbackProps)
+        expect(parsedFallback?.name == "Keychron K2" && parsedFallback?.vendorName == "Keychron",
+               "Product Name and Vendor Name fallbacks are honored")
+
+        let unnamedProps: [String: Any] = [
+            "idVendor": 0x1234,
+            "idProduct": 0x5678,
+            "locationID": 0x01300000,
+        ]
+        let parsedUnnamed = USBDeviceSampler.parseDevice(properties: unnamedProps)
+        expect(parsedUnnamed?.name == "USB Device", "unnamed USB device falls back to generic title")
+
+        let rootHubProps: [String: Any] = [
+            "USB Product Name": "AppleUSBVHCIBoot",
+            "idVendor": 0,
+            "idProduct": 0,
+            "locationID": 0x01000000,
+        ]
+        expect(USBDeviceSampler.parseDevice(properties: rootHubProps) == nil,
+               "root controller hub with zero IDs is excluded")
+
+        let builtInProps: [String: Any] = [
+            "USB Product Name": "FaceTime HD Camera",
+            "Built-In": true,
+            "idVendor": 0x05ac,
+            "idProduct": 0x8514,
+            "locationID": 0x01400000,
+        ]
+        expect(USBDeviceSampler.parseDevice(properties: builtInProps) == nil,
+               "built-in device with Built-In bool is excluded")
+
+        let builtInNumProps: [String: Any] = [
+            "USB Product Name": "Ambient Light Sensor",
+            "Built-In": 1,
+            "idVendor": 0x05ac,
+            "idProduct": 0x8515,
+            "locationID": 0x01410000,
+        ]
+        expect(USBDeviceSampler.parseDevice(properties: builtInNumProps) == nil,
+               "built-in device with Built-In number is excluded")
+
+        let nonRemovableProps: [String: Any] = [
+            "USB Product Name": "Internal Card Reader",
+            "non-removable": "yes",
+            "idVendor": 0x05ac,
+            "idProduct": 0x8403,
+            "locationID": 0x01500000,
+        ]
+        expect(USBDeviceSampler.parseDevice(properties: nonRemovableProps) == nil,
+               "non-removable device is excluded")
+
+        let duplicateUSB = ConnectedUSBDevice(id: "same", name: "First", vendorName: nil,
+                                              vendorId: 1, productId: 1, locationId: 1)
+        let uniqueUSB = ConnectedUSBDevice(id: "other", name: "Second", vendorName: nil,
+                                           vendorId: 1, productId: 2, locationId: 2)
+        expect(USBDeviceSampler.deduplicated([duplicateUSB, duplicateUSB, uniqueUSB]).map(\.id)
+                   == ["same", "other"],
+               "USB devices are deduplicated by their stable registry identifier")
+
+        for lang in AppLanguage.allCases {
+            let strings = FeatureStrings.connectedDevices(lang)
+            expect(!strings.title.isEmpty, "connected devices title present for \(lang.rawValue)")
+            expect(!strings.hubDescription.isEmpty, "connected devices hub description present for \(lang.rawValue)")
+            expect(!strings.noDevices.isEmpty, "connected devices empty text present for \(lang.rawValue)")
+            expect(!strings.unnamedDevice.isEmpty, "connected devices fallback title present for \(lang.rawValue)")
+            expect(!strings.menuBarLabel.isEmpty, "connected devices menu bar label present for \(lang.rawValue)")
+            expect(!strings.oneConnected.isEmpty, "connected devices 1 device text present for \(lang.rawValue)")
+            expect(strings.formattedCount(1) == strings.oneConnected, "formattedCount(1) returns singular for \(lang.rawValue)")
+            expect(strings.formattedCount(3).contains("3"), "formattedCount(3) formats count for \(lang.rawValue)")
+        }
 
         // MARK: Interface filtering
 
@@ -15607,7 +15712,7 @@ struct MetricsTests {
 
         // MARK: Features hub catalog
 
-        expect(AppFeature.allCases.count == 69, "feature catalog has 69 features")
+        expect(AppFeature.allCases.count == 70, "feature catalog has 70 features")
         expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         expect(AppFeature.allCases.map(\.rawValue) == [
@@ -15622,7 +15727,7 @@ struct MetricsTests {
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
             "radialMenu", "scratchpad", "commandBar", "screenRecorder", "killProcess", "portManager", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
-            "fanControl",
+            "connectedDevices", "fanControl",
         ], "feature ids are stable (they persist inside availability keys)")
         expect(MouseAccelerationSupport.validatedRegistryID(nil) == nil
                 && MouseAccelerationSupport.validatedRegistryID(0) == nil
