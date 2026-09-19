@@ -302,7 +302,7 @@ struct MenuPanelView: View {
         case .network: return 330
         case .disk: return 360
         case .battery, .power: return 360
-        case .fan: return 240
+        case .fan, .connectedDevices: return 240
         }
     }
 
