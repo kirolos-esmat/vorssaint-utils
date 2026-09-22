@@ -634,6 +634,7 @@ final class SystemMonitor: ObservableObject {
         if plan.needGPUUsage { kinds.append(.gpuUsage) }
         if plan.needTemperature { kinds.append(.temperature) }
         if plan.needFanSpeed { kinds.append(.fanSpeed) }
+        if plan.needConnectedDevices { kinds.append(.connectedDevices) }
         return kinds
     }
 

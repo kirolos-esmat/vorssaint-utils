@@ -316,6 +316,8 @@ enum NetworkFeatureTests {
                "connected devices sampling runs at 2s cadence in foreground")
         suite.expect(MonitorSamplingPolicy.wakeTicks(for: [.connectedDevices], intervalSeconds: 2, foreground: false) == 5,
                "monitor with only connected devices wakes at 10s cadence")
+        suite.expect(MonitorSamplingPolicy.wakeTicks(for: [.power, .connectedDevices], intervalSeconds: 2, foreground: false) == 1,
+               "power and connected devices keep every USB sampling tick reachable")
         // Exactness invariant: the cadence always divides every needed stride,
         // so grid-aligned ticks keep hitting each stride exactly on schedule.
         let wakeKinds: [MonitorSamplingKind] = [.disk, .power, .gpuUsage, .temperature,
