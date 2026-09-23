@@ -92,6 +92,12 @@ final class USBDeviceSampler {
             return nil
         }
 
+        // A physical USB hub can enumerate once per supported bus generation.
+        // It is infrastructure rather than a connected peripheral, so omit it.
+        if (dict["bDeviceClass"] as? NSNumber)?.intValue == 9 {
+            return nil
+        }
+
         let productString = (dict[kUSBProductString as String] as? String)
             ?? (dict["USB Product Name"] as? String)
             ?? (dict["Product Name"] as? String) ?? ""

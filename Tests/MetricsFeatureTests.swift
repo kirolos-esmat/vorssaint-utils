@@ -775,6 +775,9 @@ enum MetricsFeatureTests {
         let rootHubProps: [String: Any] = ["idVendor": 0, "idProduct": 0]
         suite.expect(USBDeviceSampler.parseDevice(properties: rootHubProps) == nil,
                      "root controller hubs are excluded")
+        let externalHubProps: [String: Any] = ["bDeviceClass": 9, "idVendor": 1, "idProduct": 1]
+        suite.expect(USBDeviceSampler.parseDevice(properties: externalHubProps) == nil,
+                     "external USB hubs are excluded so their bus entries do not inflate the count")
         let builtInProps: [String: Any] = ["Built-In": true, "idVendor": 1, "idProduct": 1]
         suite.expect(USBDeviceSampler.parseDevice(properties: builtInProps) == nil,
                      "built-in USB hardware is excluded")
