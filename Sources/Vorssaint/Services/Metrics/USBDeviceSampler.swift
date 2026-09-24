@@ -58,15 +58,11 @@ final class USBDeviceSampler {
             entryID = 0
         }
 
-        var cName = [CChar](repeating: 0, count: 128)
-        let regName = (IORegistryEntryGetName(entry, &cName) == KERN_SUCCESS) ? String(cString: cName) : ""
-
-        return Self.parseDevice(properties: dict, registryName: regName, registryEntryID: entryID)
+        return Self.parseDevice(properties: dict, registryEntryID: entryID)
     }
 
     /// Pure parser for testability.
     static func parseDevice(properties dict: [String: Any],
-                            registryName: String = "",
                             registryEntryID: UInt64 = 0) -> ConnectedUSBDevice? {
         func isTruthy(_ val: Any?) -> Bool {
             if let b = val as? Bool { return b }
@@ -94,24 +90,19 @@ final class USBDeviceSampler {
 
         // A physical USB hub can enumerate once per supported bus generation.
         // It is infrastructure rather than a connected peripheral, so omit it.
-        if (dict["bDeviceClass"] as? NSNumber)?.intValue == 9 {
+        // So is a billboard device (class 17): USB-C adapters and docks with a
+        // display output add one that only reports whether the display mode worked.
+        let deviceClass = (dict["bDeviceClass"] as? NSNumber)?.intValue
+        if deviceClass == 9 || deviceClass == 17 {
             return nil
         }
 
         let productString = (dict[kUSBProductString as String] as? String)
             ?? (dict["USB Product Name"] as? String)
             ?? (dict["Product Name"] as? String) ?? ""
-        let trimmedProduct = productString.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedRegName = registryName.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let displayName: String
-        if !trimmedProduct.isEmpty {
-            displayName = trimmedProduct
-        } else if !trimmedRegName.isEmpty {
-            displayName = trimmedRegName
-        } else {
-            displayName = FeatureStrings.connectedDevices(L10n.shared.language).unnamedDevice
-        }
+        // Without a product string the registry name is only the class name, so
+        // the name stays empty and the list shows its translated fallback.
+        let displayName = productString.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let vendorString = (dict[kUSBVendorString as String] as? String)
             ?? (dict["USB Vendor Name"] as? String)

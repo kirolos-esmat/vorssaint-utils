@@ -778,6 +778,12 @@ enum MetricsFeatureTests {
         let externalHubProps: [String: Any] = ["bDeviceClass": 9, "idVendor": 1, "idProduct": 1]
         suite.expect(USBDeviceSampler.parseDevice(properties: externalHubProps) == nil,
                      "external USB hubs are excluded so their bus entries do not inflate the count")
+        let billboardProps: [String: Any] = ["bDeviceClass": 17, "idVendor": 1, "idProduct": 1]
+        suite.expect(USBDeviceSampler.parseDevice(properties: billboardProps) == nil,
+                     "USB-C billboard devices are excluded because they only report the display mode")
+        let unnamedProps: [String: Any] = ["idVendor": 2, "idProduct": 3, "locationID": 5]
+        suite.expect(USBDeviceSampler.parseDevice(properties: unnamedProps)?.name == "",
+                     "a device without a product name stays unnamed so the list shows its translated fallback")
         let builtInProps: [String: Any] = ["Built-In": true, "idVendor": 1, "idProduct": 1]
         suite.expect(USBDeviceSampler.parseDevice(properties: builtInProps) == nil,
                      "built-in USB hardware is excluded")

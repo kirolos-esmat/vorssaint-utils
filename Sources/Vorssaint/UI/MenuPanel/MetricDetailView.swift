@@ -470,7 +470,7 @@ struct MetricDetailView: View {
             }
             return snapshot.connectedDevices.map { device in
                 row(id: device.id,
-                    device.name,
+                    device.name.isEmpty ? strings.unnamedDevice : device.name,
                     device.vendorName ?? "",
                     symbolName: "cable.connector")
             }

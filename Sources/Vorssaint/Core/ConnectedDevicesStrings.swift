@@ -132,13 +132,13 @@ private extension ConnectedDevicesFeatureStrings {
     )
 
     static let ko = ConnectedDevicesFeatureStrings(
-        title: "연결된 장비",
+        title: "연결된 기기",
         hubDescription: "연결된 외부 USB 주변기기 수 측정",
-        noDevices: "연결된 외부 장비 없음",
-        unnamedDevice: "USB 장비",
+        noDevices: "연결된 외부 기기 없음",
+        unnamedDevice: "USB 기기",
         menuBarLabel: "USB",
-        oneConnected: "장비 1개 연결됨",
-        devicesConnectedFormat: "장비 %d개 연결됨"
+        oneConnected: "기기 1개 연결됨",
+        devicesConnectedFormat: "기기 %d개 연결됨"
     )
 
     static let zhHans = ConnectedDevicesFeatureStrings(
